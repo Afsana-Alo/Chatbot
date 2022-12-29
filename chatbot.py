@@ -1,143 +1,379 @@
-# Building a ChatBot with Deep NLP
- 
- 
- 
-# Importing the libraries
-import numpy as np
-import tensorflow as tf
+
+
 import re
-import time
- 
- 
- 
-########## PART 1 - DATA PREPROCESSING ##########
- 
- 
- 
-# Importing the dataset
-lines = open('movie_lines.txt', encoding = 'utf-8', errors = 'ignore').read().split('\n')
-conversations = open('movie_conversations.txt', encoding = 'utf-8', errors = 'ignore').read().split('\n')
- 
-# Creating a dictionary that maps each line and its id
-id2line = {}
+
+
+lines = open('movie_lines.txt', encoding='utf-8',
+             errors='ignore').read().split('\n')
+
+convers = open('movie_conversations.txt', encoding='utf-8',
+             errors='ignore').read().split('\n')
+
+
+exchn = []
+for conver in convers:
+    exchn.append(conver.split(' +++$+++ ')[-1][1:-1].replace("'", " ").replace(",","").split())
+
+diag = {}
 for line in lines:
-    _line = line.split(' +++$+++ ')
-    if len(_line) == 5:
-        id2line[_line[0]] = _line[4]
- 
-# Creating a list of all of the conversations
-conversations_ids = []
-for conversation in conversations[:-1]:
-    _conversation = conversation.split(' +++$+++ ')[-1][1:-1].replace("'", "").replace(" ", "")
-    conversations_ids.append(_conversation.split(','))
- 
-# Getting separately the questions and the answers
+    diag[line.split(' +++$+++ ')[0]] = line.split(' +++$+++ ')[-1]
+
+## delete
+del(lines, convers, conver, line)
+
 questions = []
 answers = []
-for conversation in conversations_ids:
-    for i in range(len(conversation) - 1):
-        questions.append(id2line[conversation[i]])
-        answers.append(id2line[conversation[i+1]])
- 
-# Doing a first cleaning of the texts
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r"i'm", "i am", text)
-    text = re.sub(r"he's", "he is", text)
-    text = re.sub(r"she's", "she is", text)
-    text = re.sub(r"that's", "that is", text)
-    text = re.sub(r"what's", "what is", text)
-    text = re.sub(r"where's", "where is", text)
-    text = re.sub(r"\'ll", " will", text)
-    text = re.sub(r"\'ve", " have", text)
-    text = re.sub(r"\'re", " are", text)
-    text = re.sub(r"\'d", " would", text)
-    text = re.sub(r"won't", "will not", text)
-    text = re.sub(r"can't", "cannot", text)
-    text = re.sub(r"[-()\"#/@;:<>{}+=~|.?,]", "", text)
-    return text
- 
-# Cleaning the questions
-clean_questions = []
-for question in questions:
-    clean_questions.append(clean_text(question))
- 
-# Cleaning the answers
-clean_answers = []
-for answer in answers:
-    clean_answers.append(clean_text(answer))
- 
-# Creating a dictionary that maps each word to its number of occurrences
+
+for conver in exchn:
+    for i in range(len(conver) - 1):
+        questions.append(diag[conver[i]])
+        answers.append(diag[conver[i+1]])
+
+## delete
+del(diag, exchn, conver, i)
+
+
+
+   
+
+
+sorted_ques = []
+sorted_ans = []
+for i in range(len(questions)):
+    if len(questions[i]) < 13:
+        sorted_ques.append(questions[i])
+        sorted_ans.append(answers[i])
+
+
+
+def clean_text(txt):
+    txt = txt.lower()
+    txt = re.sub(r"i'm", "i am", txt)
+    txt = re.sub(r"he's", "he is", txt)
+    txt = re.sub(r"she's", "she is", txt)
+    txt = re.sub(r"that's", "that is", txt)
+    txt = re.sub(r"what's", "what is", txt)
+    txt = re.sub(r"where's", "where is", txt)
+    txt = re.sub(r"\'ll", " will", txt)
+    txt = re.sub(r"\'ve", " have", txt)
+    txt = re.sub(r"\'re", " are", txt)
+    txt = re.sub(r"\'d", " would", txt)
+    txt = re.sub(r"won't", "will not", txt)
+    txt = re.sub(r"can't", "can not", txt)
+    txt = re.sub(r"[^\w\s]", "", txt)
+    return txt
+
+clean_ques = []
+clean_ans = []
+
+for line in sorted_ques:
+    clean_ques.append(clean_text(line))
+        
+for line in sorted_ans:
+    clean_ans.append(clean_text(line))
+
+
+
+## delete
+del(answers, questions, line)
+
+
+
+for i in range(len(clean_ans)):
+    clean_ans[i] = ' '.join(clean_ans[i].split()[:11])
+
+
+
+
+
+del(sorted_ans, sorted_ques)
+
+
+## trimming
+clean_ans=clean_ans[:30000]
+clean_ques=clean_ques[:30000]
+## delete
+
+
+###  count occurences ###
 word2count = {}
-for question in clean_questions:
-    for word in question.split():
+
+for line in clean_ques:
+    for word in line.split():
         if word not in word2count:
             word2count[word] = 1
         else:
             word2count[word] += 1
-for answer in clean_answers:
-    for word in answer.split():
+for line in clean_ans:
+    for word in line.split():
         if word not in word2count:
             word2count[word] = 1
         else:
             word2count[word] += 1
- 
-# Creating two dictionaries that map the questions words and the answers words to a unique integer
-threshold_questions = 20
-questionswords2int = {}
-word_number = 0
+
+## delete
+del(word, line)
+
+
+###  remove less frequent ###
+thresh = 5
+
+vocab = {}
+word_num = 0
 for word, count in word2count.items():
-    if count >= threshold_questions:
-        questionswords2int[word] = word_number
-        word_number += 1
-threshold_answers = 20
-answerswords2int = {}
-word_number = 0
-for word, count in word2count.items():
-    if count >= threshold_answers:
-        answerswords2int[word] = word_number
-        word_number += 1
- 
-# Adding the last tokens to these two dictionaries
+    if count >= thresh:
+        vocab[word] = word_num
+        word_num += 1
+        
+## delete
+del(word2count, word, count, thresh)       
+del(word_num)        
+
+
+
+for i in range(len(clean_ans)):
+    clean_ans[i] = '<SOS> ' + clean_ans[i] + ' <EOS>'
+
+
+
 tokens = ['<PAD>', '<EOS>', '<OUT>', '<SOS>']
+x = len(vocab)
 for token in tokens:
-    questionswords2int[token] = len(questionswords2int) + 1
-for token in tokens:
-    answerswords2int[token] = len(answerswords2int) + 1
- 
-# Creating the inverse dictionary of the answerswords2int dictionary
-answersints2word = {w_i: w for w, w_i in answerswords2int.items()}
- 
-# Adding the End Of String token to the end of every answer
-for i in range(len(clean_answers)):
-    clean_answers[i] += ' <EOS>'
- 
-# Translating all the questions and the answers into integers
-# and Replacing all the words that were filtered out by <OUT> 
-questions_into_int = []
-for question in clean_questions:
-    ints = []
-    for word in question.split():
-        if word not in questionswords2int:
-            ints.append(questionswords2int['<OUT>'])
+    vocab[token] = x
+    x += 1
+    
+    
+
+vocab['cameron'] = vocab['<PAD>']
+vocab['<PAD>'] = 0
+
+## delete
+del(token, tokens) 
+del(x)
+
+### inv answers dict ###
+inv_vocab = {w:v for v, w in vocab.items()}
+
+
+
+## delete
+del(i)
+
+
+
+encoder_inp = []
+for line in clean_ques:
+    lst = []
+    for word in line.split():
+        if word not in vocab:
+            lst.append(vocab['<OUT>'])
         else:
-            ints.append(questionswords2int[word])
-    questions_into_int.append(ints)
-answers_into_int = []
-for answer in clean_answers:
-    ints = []
-    for word in answer.split():
-        if word not in answerswords2int:
-            ints.append(answerswords2int['<OUT>'])
+            lst.append(vocab[word])
+        
+    encoder_inp.append(lst)
+
+decoder_inp = []
+for line in clean_ans:
+    lst = []
+    for word in line.split():
+        if word not in vocab:
+            lst.append(vocab['<OUT>'])
         else:
-            ints.append(answerswords2int[word])
-    answers_into_int.append(ints)
- 
-# Sorting questions and answers by the length of questions
-sorted_clean_questions = []
-sorted_clean_answers = []
-for length in range(1, 25 + 1):
-    for i in enumerate(questions_into_int):
-        if len(i[1]) == length:
-            sorted_clean_questions.append(questions_into_int[i[0]])
-            sorted_clean_answers.append(answers_into_int[i[0]])
+            lst.append(vocab[word])        
+    decoder_inp.append(lst)
+
+### delete
+del(clean_ans, clean_ques, line, lst, word)
+
+
+
+
+
+
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+encoder_inp = pad_sequences(encoder_inp, 13, padding='post', truncating='post')
+decoder_inp = pad_sequences(decoder_inp, 13, padding='post', truncating='post')
+
+
+
+
+decoder_final_output = []
+for i in decoder_inp:
+    decoder_final_output.append(i[1:]) 
+
+decoder_final_output = pad_sequences(decoder_final_output, 13, padding='post', truncating='post')
+
+
+del(i)
+
+from tensorflow.keras.utils import to_categorical
+decoder_final_output = to_categorical(decoder_final_output, len(vocab))
+
+
+
+print(decoder_final_output.shape)
+
+
+
+
+
+
+
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Embedding, LSTM, Input
+
+
+enc_inp = Input(shape=(13, ))
+dec_inp = Input(shape=(13, ))
+
+
+VOCAB_SIZE = len(vocab)
+embed = Embedding(VOCAB_SIZE+1, output_dim=50, 
+                  input_length=13,
+                  trainable=True                  
+                  )
+
+
+enc_embed = embed(enc_inp)
+enc_lstm = LSTM(400, return_sequences=True, return_state=True)
+enc_op, h, c = enc_lstm(enc_embed)
+enc_states = [h, c]
+
+
+
+dec_embed = embed(dec_inp)
+dec_lstm = LSTM(400, return_sequences=True, return_state=True)
+dec_op, _, _ = dec_lstm(dec_embed, initial_state=enc_states)
+
+dense = Dense(VOCAB_SIZE, activation='softmax')
+
+dense_op = dense(dec_op)
+
+model = Model([enc_inp, dec_inp], dense_op)
+
+
+
+
+model.compile(loss='categorical_crossentropy',metrics=['acc'],optimizer='adam')
+
+model.fit([encoder_inp, decoder_inp],decoder_final_output,epochs=25)
+
+
+
+
+
+
+
+
+
+
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input
+
+
+enc_model = Model([enc_inp], enc_states)
+
+
+
+# decoder Model
+decoder_state_input_h = Input(shape=(400,))
+decoder_state_input_c = Input(shape=(400,))
+
+decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
+
+
+decoder_outputs, state_h, state_c = dec_lstm(dec_embed , 
+                                    initial_state=decoder_states_inputs)
+
+
+decoder_states = [state_h, state_c]
+
+
+dec_model = Model([dec_inp]+ decoder_states_inputs,
+                                      [decoder_outputs]+ decoder_states)
+
+
+
+
+
+import numpy as np
+
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+print("##########################################")
+print("#      Welcome! Start conversation       #")
+print("##########################################")
+
+
+prepro1 = ""
+while prepro1 != 'q':
+    prepro1  = input("you : ")
+   
+
+    prepro1 = clean_text(prepro1)
+    
+
+    prepro = [prepro1]
+    
+
+    txt = []
+    for x in prepro:
+       
+        lst = []
+        for y in x.split():
+            
+            try:
+                lst.append(vocab[y])
+           
+            except:
+                lst.append(vocab['<OUT>'])
+        txt.append(lst)
+
+    txt = pad_sequences(txt, 13, padding='post')
+
+    
+
+    stat = enc_model.predict( txt )
+
+    empty_target_seq = np.zeros( ( 1 , 1) )
+    
+
+
+    empty_target_seq[0, 0] = vocab['<SOS>']
+   
+
+    stop_condition = False
+    decoded_translation = ''
+
+    while not stop_condition :
+
+        dec_outputs , h, c= dec_model.predict([ empty_target_seq] + stat )
+        decoder_concat_input = dense(dec_outputs)
+       
+        sampled_word_index = np.argmax( decoder_concat_input[0, -1, :] )
+       
+
+        sampled_word = inv_vocab[sampled_word_index] + ' '
+
+
+        if sampled_word != '<EOS> ':
+            decoded_translation += sampled_word  
+
+        if sampled_word == '<EOS> ' or len(decoded_translation.split()) > 13:
+            stop_condition = True 
+
+        empty_target_seq = np.zeros( ( 1 , 1 ) )  
+        empty_target_seq[ 0 , 0 ] = sampled_word_index
+        
+        stat = [h, c]  
+
+    print("chatbot : ", decoded_translation )
+    print("==============================================")  
+
+
+
+
+
+
+
+
